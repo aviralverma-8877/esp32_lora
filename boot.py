@@ -1,17 +1,19 @@
 # This file is executed on every boot (including wake-boot from deepsleep)
 import esp
 esp.osdebug(None)
-
 import webrepl
 webrepl.start()
 
-import sx127x
 import time
 import _thread
 from neo6m import Neo6mGPS
 from machine import Pin, I2C, UART
 from wifi_manager import WiFiManager
 from ssd1306 import SSD1306_I2C
+from lora import lora
+
+led = Pin(4, Pin.OUT)
+pir = Pin(33, Pin.IN)
 
 SSID = "JioThings"
 PSK = "jio12345"
@@ -25,37 +27,90 @@ display = SSD1306_I2C(128, 64, i2c)
 uart = UART(2, 9600)
 uart.init(9600, bits=8, parity=None, stop=1)
 
+POS = {}
+RX = False
+TX = False
+
 def show_ip():
     rssi = wm.get_rssi()
     display.fill(0)
     display.text(SSID, 0, 0, 1)
     display.text('RSSI: '+str(rssi), 0, 10, 1)
     display.text(wm.get_ip(), 0, 20, 1)
-    
+
+def handle_interrupt(pin):
+    try:
+        global TX
+        TX = True
+        display.fill(0)
+        display.text("LORA TX",0,0,1)
+        display.show()
+        lora.println(str(POS))
+        time.sleep(1)
+        TX = False
+    except Exception as e:
+        print(e)
+
 def GPSThread():
     while True:
-        data = uart.read()
-        if data != None:
-            try:
-                show_ip()
-                gps = Neo6mGPS(data)
-                if gps.valid_loc:
-                    lat = gps.latitude()
-                    lng = gps.longitude()
-                    if lat != None and lng != None:
-                        display.text("Lat : "+gps.latitude(), 0, 30, 1)
-                        display.text("Lng : "+gps.longitude(), 0, 40, 1)
-                if gps.valid_time:
-                    hour = gps.hour()
-                    minute = gps.minute()
-                    sec = gps.sec()
-                    t = hour+":"+minute+":"+sec
-                    if hour != None and minute != None and sec != None:
-                        display.text(t, 0, 50, 1)
-                display.show()
-            except Exception as err:
-                print(err)
+        global RX
+        global TX
+        if TX == False and RX == False:
+            data = uart.read()
+            if data != None:
+                try:
+                    show_ip()
+                    gps = Neo6mGPS(data)
+                    global POS
+                    POS = {}
+                    if gps.valid_loc:
+                        lat = gps.latitude()
+                        lng = gps.longitude()
+                        if lat != None and lng != None:
+                            display.text("Lat : "+gps.latitude(), 0, 30, 1)
+                            display.text("Lng : "+gps.longitude(), 0, 40, 1)
+                            POS["Lat"] = gps.latitude()
+                            POS["Lng"] = gps.longitude()
+                    if gps.valid_time:
+                        hour = gps.hour()
+                        minute = gps.minute()
+                        sec = gps.sec()
+                        t = hour+":"+minute+":"+sec
+                        if hour != None and minute != None and sec != None:
+                            display.text(t, 0, 50, 1)
+                            POS["Time"] = hour+":"+minute+":"+sec
+                    display.show()
+                except Exception as err:
+                    print(err)
         time.sleep(1)
+
+def receive():
+    while True:
+        if lora.receivedPacket():
+            try:
+                global RX
+                RX = True
+                payload = lora.readPayload().decode()
+                lora.collectGarbage()
+                rssi = lora.packetRssi()
+                display.fill(0)
+                display.text("LORA RX", 0, 0, 1)
+                res = eval(payload)
+                if "Time" in res:
+                    display.text(res["Time"], 0, 10, 1)
+                if "Lat" in res:
+                    display.text(res["Lat"], 0, 20, 1)
+                if "Lng" in res:
+                    display.text(res["Lng"], 0, 30, 1)
+                display.text("RSSI: "+str(rssi), 0, 40, 1)
+                display.show()
+                time.sleep(1)
+                RX = False
+            except Exception as e:
+                print(e)
+
 show_ip()
 display.show()
+pir.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt)
 _thread.start_new_thread(GPSThread, ())
+_thread.start_new_thread(receive, ())
