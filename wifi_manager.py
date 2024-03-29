@@ -17,7 +17,7 @@ class WiFiManager:
             print("Connected to "+ssid+". IP:"+ip)
         except Exception as err:
             print(err)
-            self.connect()
+            self.connect(ssid, psk)
     def get_ip(self):
         ip = self.sta_if.ifconfig()[0]
         return ip

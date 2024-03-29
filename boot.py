@@ -1,12 +1,13 @@
 # This file is executed on every boot (including wake-boot from deepsleep)
 import esp
 esp.osdebug(None)
-import webrepl
-webrepl.start()
-
+#import webrepl
+#webrepl.start()
+import os
 import time
 import _thread
 from neo6m import Neo6mGPS
+import machine
 from machine import Pin, I2C, UART
 from wifi_manager import WiFiManager
 from ssd1306 import SSD1306_I2C
@@ -14,39 +15,52 @@ from lora import lora
 
 led = Pin(4, Pin.OUT)
 pir = Pin(33, Pin.IN)
+l = Pin(32, Pin.IN)
 
 SSID = "JioThings"
 PSK = "jio12345"
 
-wm = WiFiManager()
-wm.connect(SSID,PSK)
-
+WM = WiFiManager()
+WM.connect(SSID,PSK)
 i2c = I2C(sda=Pin(21), scl=Pin(22))
 display = SSD1306_I2C(128, 64, i2c)
 
 uart = UART(2, 9600)
 uart.init(9600, bits=8, parity=None, stop=1)
 
-POS = {}
+POS = {"Type":"loc","ID":str(machine.unique_id())}
 RX = False
 TX = False
 
 def show_ip():
-    rssi = wm.get_rssi()
+    global WM
+    rssi = WM.get_rssi()
     display.fill(0)
     display.text(SSID, 0, 0, 1)
     display.text('RSSI: '+str(rssi), 0, 10, 1)
-    display.text(wm.get_ip(), 0, 20, 1)
+    display.text(WM.get_ip(), 0, 20, 1)    
 
 def handle_interrupt(pin):
+    transmit_loc()
+
+def req_loc(pin):
     try:
         global TX
         TX = True
+        payload = {"Type":"req_loc"}
+        lora.println(str(payload))
+        TX = False
+    except Exception as e:
+        print(e)
+
+def transmit_loc():
+    try:
+        global TX
+        TX = True
+        lora.println(str(POS))
         display.fill(0)
         display.text("LORA TX",0,0,1)
         display.show()
-        lora.println(str(POS))
-        time.sleep(1)
         TX = False
     except Exception as e:
         print(e)
@@ -62,7 +76,6 @@ def GPSThread():
                     show_ip()
                     gps = Neo6mGPS(data)
                     global POS
-                    POS = {}
                     if gps.valid_loc:
                         lat = gps.latitude()
                         lng = gps.longitude()
@@ -96,21 +109,28 @@ def receive():
                 display.fill(0)
                 display.text("LORA RX", 0, 0, 1)
                 res = eval(payload)
-                if "Time" in res:
-                    display.text(res["Time"], 0, 10, 1)
-                if "Lat" in res:
-                    display.text(res["Lat"], 0, 20, 1)
-                if "Lng" in res:
-                    display.text(res["Lng"], 0, 30, 1)
-                display.text("RSSI: "+str(rssi), 0, 40, 1)
-                display.show()
-                time.sleep(1)
+                if "Type" in res:
+                    if res["Type"] == "loc":
+                        record = open("record.txt", "a")
+                        record.write(str(res)+"\r\n")
+                        record.close()
+                        if "Time" in res:
+                            display.text(res["Time"], 0, 10, 1)
+                        if "Lat" in res:
+                            display.text(res["Lat"], 0, 20, 1)
+                        if "Lng" in res:
+                            display.text(res["Lng"], 0, 30, 1)
+                        display.text("RSSI: "+str(rssi), 0, 40, 1)
+                        display.show()
+                        time.sleep(1)
+                    elif res["Type"] == "req_loc":
+                        transmit_loc()
                 RX = False
             except Exception as e:
                 print(e)
-
 show_ip()
 display.show()
 pir.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt)
+l.irq(trigger=Pin.IRQ_RISING, handler=req_loc)
 _thread.start_new_thread(GPSThread, ())
 _thread.start_new_thread(receive, ())
