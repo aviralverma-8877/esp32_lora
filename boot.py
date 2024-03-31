@@ -1,8 +1,7 @@
 # This file is executed on every boot (including wake-boot from deepsleep)
 import esp
 esp.osdebug(None)
-#import webrepl
-#webrepl.start()
+
 import os
 import time
 import _thread
@@ -17,11 +16,15 @@ led = Pin(4, Pin.OUT)
 pir = Pin(33, Pin.IN)
 l = Pin(32, Pin.IN)
 
-SSID = "JioThings"
-PSK = "jio12345"
+SSID = "WiFi_SSID"
+PSK = "*******"
+WIFI_CONNECT = False
 
 WM = WiFiManager()
-WM.connect(SSID,PSK)
+if WIFI_CONNECT:
+    WM.connect(SSID,PSK)
+    import webrepl
+    webrepl.start()
 i2c = I2C(sda=Pin(21), scl=Pin(22))
 display = SSD1306_I2C(128, 64, i2c)
 
@@ -33,12 +36,17 @@ RX = False
 TX = False
 
 def show_ip():
+    global WIFI_CONNECT
     global WM
-    rssi = WM.get_rssi()
-    display.fill(0)
-    display.text(SSID, 0, 0, 1)
-    display.text('RSSI: '+str(rssi), 0, 10, 1)
-    display.text(WM.get_ip(), 0, 20, 1)    
+    if WIFI_CONNECT:
+        rssi = WM.get_rssi()
+        display.fill(0)
+        display.text(SSID, 0, 0, 1)
+        display.text('RSSI: '+str(rssi), 0, 10, 1)
+        display.text(WM.get_ip(), 0, 20, 1)
+    else:
+        display.fill(0)
+        display.text("Not Connected", 0, 0, 1)
 
 def handle_interrupt(pin):
     transmit_loc()
