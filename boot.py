@@ -12,9 +12,9 @@ from wifi_manager import WiFiManager
 from ssd1306 import SSD1306_I2C
 from lora import lora
 
-led = Pin(4, Pin.OUT)
-pir = Pin(33, Pin.IN)
-l = Pin(32, Pin.IN)
+led = Pin(2, Pin.OUT)
+pir = Pin(39, Pin.IN)
+l = Pin(36, Pin.IN)
 
 SSID = "WiFi_SSID"
 PSK = "*******"
@@ -138,7 +138,7 @@ def receive():
                 print(e)
 show_ip()
 display.show()
-pir.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt)
-l.irq(trigger=Pin.IRQ_RISING, handler=req_loc)
+pir.irq(trigger=Pin.IRQ_FALLING, handler=handle_interrupt)
+l.irq(trigger=Pin.IRQ_FALLING, handler=req_loc)
 _thread.start_new_thread(GPSThread, ())
 _thread.start_new_thread(receive, ())

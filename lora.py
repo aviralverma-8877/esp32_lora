@@ -2,7 +2,7 @@ from machine import Pin,SPI
 from sx127x import SX127x
 
 lora_default = {
-    'frequency': 434000000,
+    'frequency': 433000000,
     'frequency_offset':0,
     'tx_power_level': 14,
     'signal_bandwidth': 125e3,
@@ -17,12 +17,12 @@ lora_default = {
 }
 
 lora_pins = {
-    'dio_0':2,
-    'ss':5,
-    'reset':14,
-    'sck':18,
+    'dio_0':26,
+    'ss':18,
+    'reset':23,
+    'sck':5,
     'miso':19,
-    'mosi':23,
+    'mosi':27,
 }
 
 lora_spi = SPI(
